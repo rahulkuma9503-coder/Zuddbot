@@ -42,6 +42,20 @@ broadcast_active = False
 broadcast_cancelled = False
 broadcast_task = None
 
+# Loading animation sequences
+LOADING_SEQUENCES = [
+    ["⏳", "⌛", "⏳", "⌛"],
+    ["🔘", "⚫", "🔘", "⚫"],
+    ["◐", "◓", "◑", "◒"],
+    ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂"],
+    ["┤", "┘", "┴", "└", "├", "┌", "┬", "┐"],
+    ["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"],
+    [".", "..", "...", "....", "...", "..", "."],
+    ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"],
+    ["💫", "✨", "💫", "✨"],
+    ["🔄", "⏳", "🔄", "⏳"]
+]
+
 # Helper function to format uptime
 def format_uptime(seconds):
     days, seconds = divmod(seconds, 86400)
@@ -84,6 +98,33 @@ except Exception as e:
 
 async def is_owner(user_id: int) -> bool:
     return str(user_id) == ADMIN_USER_ID
+
+async def show_loading_animation(update: Update, context: ContextTypes.DEFAULT_TYPE, loading_type: str = "default"):
+    """Show loading animation while processing"""
+    loading_messages = {
+        "start": "🚀 Starting up...",
+        "lecture": "📚 Loading lecture groups...",
+        "stats": "📊 Gathering statistics...",
+        "broadcast": "📢 Preparing broadcast...",
+        "verify": "🔍 Checking membership...",
+        "default": "⏳ Processing your request..."
+    }
+    
+    base_message = loading_messages.get(loading_type, loading_messages["default"])
+    sequence = LOADING_SEQUENCES[3]  # Using the circle sequence by default
+    
+    loading_msg = await update.message.reply_text(f"{sequence[0]} {base_message}")
+    
+    # Animate for a short period (2 seconds max)
+    for i in range(6):  # Show 6 frames of animation
+        if i < len(sequence):
+            try:
+                await loading_msg.edit_text(f"{sequence[i]} {base_message}")
+            except:
+                pass
+            await asyncio.sleep(0.3)
+    
+    return loading_msg
 
 async def generate_invite_link(context: ContextTypes.DEFAULT_TYPE, chat_id: str) -> str:
     """Generate a temporary invite link that expires in 5 minutes"""
@@ -194,6 +235,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         logger.info(f"New user: {user_id} ({username})")
         
+        # Show loading animation
+        loading_msg = await show_loading_animation(update, context, "start")
+        
         # Check if user exists in DB
         user_data = users_collection.find_one({"user_id": user_id})
         if not user_data:
@@ -216,10 +260,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📚 `/lecture` - Show all available lecture groups\n"
                 "❓ `/help` - Get help with bot commands"
             )
-            await update.message.reply_text(
-                welcome_message,
-                protect_content=True
-            )
+            await loading_msg.edit_text(welcome_message)
             logger.info(f"User {user_id} started bot (no verification required)")
             return
         
@@ -236,16 +277,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📚 `/lecture` - Show all available lecture groups\n"
                 "❓ `/help` - Get help with bot commands"
             )
-            await update.message.reply_text(
-                welcome_message,
-                protect_content=True
-            )
+            await loading_msg.edit_text(welcome_message)
             logger.info(f"User {user_id} is verified in all required chats")
         else:
+            await loading_msg.delete()
             await send_verification_request(update, context)
             logger.info(f"User {user_id} needs verification")
     except Exception as e:
         logger.error(f"Start command error: {e}")
+        try:
+            await loading_msg.edit_text("❌ An error occurred. Please try again.")
+        except:
+            pass
 
 async def send_verification_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not REQUIRES_VERIFICATION:
@@ -324,11 +367,22 @@ async def check_membership_callback(update: Update, context: ContextTypes.DEFAUL
         
         logger.info(f"Membership check callback from user: {user_id}")
         
+        # Show loading animation in callback
+        loading_text = "🔍 Verifying your membership..."
+        sequence = LOADING_SEQUENCES[4]
+        for i in range(4):
+            try:
+                await query.edit_message_text(f"{sequence[i]} {loading_text}")
+            except:
+                pass
+            await asyncio.sleep(0.5)
+        
         # Check membership in all required chats
         is_member = await check_all_memberships(user_id, context)
         if is_member:
             await query.edit_message_text(
-                "✅ Verification successful!\n"
+                "✅ Verification successful!\n\n"
+                "🎉 Welcome to our community! "
                 "Use /lecture to see all available groups or /help for assistance."
             )
             logger.info(f"User {user_id} verified successfully in all required chats")
@@ -351,17 +405,17 @@ async def check_membership_callback(update: Update, context: ContextTypes.DEFAUL
                 error_message = (
                     f"❌ We couldn't verify your membership in the {', '.join(missing_chats)}!\n\n"
                     "This could be because:\n"
-                    "1. You haven't joined yet\n"
-                    "2. You just joined and the system needs time to update\n"
-                    "3. There's a temporary issue with verification\n\n"
-                    "Please make sure you've joined and wait a moment before trying again.\n\n"
-                    "If the problem persists, please contact support."
+                    "• You haven't joined yet\n"
+                    "• You just joined and the system needs time to update\n"
+                    "• There's a temporary issue with verification\n\n"
+                    "💡 Please make sure you've joined and wait a moment before trying again.\n\n"
+                    "🆘 If the problem persists, please contact support."
                 )
             else:
                 error_message = (
                     "❌ We couldn't verify your membership!\n\n"
-                    "Please make sure you've joined all required chats and wait a moment before trying again.\n\n"
-                    "If the problem persists, please contact support."
+                    "💡 Please make sure you've joined all required chats and wait a moment before trying again.\n\n"
+                    "🆘 If the problem persists, please contact support."
                 )
                 
             await query.edit_message_text(error_message)
@@ -377,24 +431,27 @@ async def lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         logger.info(f"Lecture command from user: {user_id}")
         
+        # Show loading animation
+        loading_msg = await show_loading_animation(update, context, "lecture")
+        
         # Get all custom commands
         commands = list(custom_commands_collection.find({}))
         
         if not commands:
-            await update.message.reply_text(
+            await loading_msg.edit_text(
                 "📚 No lecture groups available yet. Check back later!",
                 protect_content=True
             )
             return
             
         # Create response with all commands and descriptions
-        response = "📚 Available Lecture Groups:\n\n"
+        response = "✨ Available Lecture Groups:\n\n"
         for cmd in commands:
             response += f"🔹 /{cmd['command']} - {cmd.get('description', 'No description')}\n\n"
         
-        response += "\nUse any command above to join its group!"
+        response += "\n💡 Use any command above to join its group!"
         
-        await update.message.reply_text(
+        await loading_msg.edit_text(
             response,
             protect_content=True
         )
@@ -402,6 +459,10 @@ async def lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     except Exception as e:
         logger.error(f"Lecture command error: {e}")
+        try:
+            await loading_msg.edit_text("❌ Error loading lecture groups. Please try again.")
+        except:
+            pass
 
 # Admin command to add new lecture group command with description
 @restricted
@@ -423,6 +484,9 @@ async def add_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
+        # Show loading animation
+        loading_msg = await show_loading_animation(update, context, "default")
+        
         command_name = context.args[0].lower().strip()
         group_link = context.args[1].strip()
         
@@ -434,7 +498,7 @@ async def add_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
             command_name = command_name[1:]
             
         if not command_name.isalpha():
-            await update.message.reply_text("❌ Command name must contain only letters!")
+            await loading_msg.edit_text("❌ Command name must contain only letters!")
             return
             
         # Save to database with description
@@ -447,18 +511,21 @@ async def add_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
             upsert=True
         )
         
-        await update.message.reply_text(
+        await loading_msg.edit_text(
             f"✅ Lecture group command added successfully!\n\n"
             f"🔹 Command: /{command_name}\n"
             f"🔗 Link: {group_link}\n"
             f"📝 Description: {description}\n\n"
-            f"Users can now use /{command_name} to join this group."
+            f"🎯 Users can now use /{command_name} to join this group."
         )
         logger.info(f"Added lecture command: /{command_name} -> {group_link} ({description})")
         
     except Exception as e:
         logger.error(f"Addlecture command error: {e}")
-        await update.message.reply_text("⚠️ Failed to add lecture command. Please try again.")
+        try:
+            await loading_msg.edit_text("❌ Failed to add lecture command. Please try again.")
+        except:
+            await update.message.reply_text("❌ Failed to add lecture command. Please try again.")
 
 # Admin command to remove lecture command
 @restricted
@@ -480,21 +547,27 @@ async def remove_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
+        # Show loading animation
+        loading_msg = await show_loading_animation(update, context, "default")
+        
         command_name = context.args[0].lower().strip()
         
         # Remove from database
         result = custom_commands_collection.delete_one({"command": command_name})
         
         if result.deleted_count > 0:
-            await update.message.reply_text(f"✅ Command /{command_name} has been removed.")
+            await loading_msg.edit_text(f"✅ Command /{command_name} has been removed. 🗑️")
             logger.info(f"Removed lecture command: /{command_name}")
         else:
-            await update.message.reply_text(f"❌ Command /{command_name} not found.")
+            await loading_msg.edit_text(f"❌ Command /{command_name} not found. 🔍")
             logger.info(f"Attempted to remove non-existent command: /{command_name}")
         
     except Exception as e:
         logger.error(f"Removelecture command error: {e}")
-        await update.message.reply_text("⚠️ Failed to remove lecture command. Please try again.")
+        try:
+            await loading_msg.edit_text("❌ Failed to remove lecture command. Please try again.")
+        except:
+            await update.message.reply_text("❌ Failed to remove lecture command. Please try again.")
 
 # Handler for custom lecture commands - UPDATED WITH TUTORIAL VIDEO
 @restricted
@@ -505,9 +578,14 @@ async def lecture_command_handler(update: Update, context: ContextTypes.DEFAULT_
         
         logger.info(f"Lecture command from user: {user_id} - /{command}")
         
+        # Show quick loading
+        loading_msg = await update.message.reply_text(f"🔍 Loading {command} group...")
+        await asyncio.sleep(0.5)  # Brief loading effect
+        
         # Find command in database
         cmd_data = custom_commands_collection.find_one({"command": command})
         if not cmd_data:
+            await loading_msg.delete()
             return  # Not a lecture command
         
         # Create inline buttons for group link and tutorial
@@ -520,16 +598,20 @@ async def lecture_command_handler(update: Update, context: ContextTypes.DEFAULT_
         # Get description or use default
         description = cmd_data.get("description", f"Join the {command} group")
         
-        await update.message.reply_text(
+        await loading_msg.edit_text(
             f"📚 {description}\n\n"
-            "Click the button below to join the group:\n"
-            "Need help joining? Watch the tutorial video!",
+            "🎯 Click the button below to join the group:\n"
+            "💡 Need help joining? Watch the tutorial video!",
             reply_markup=reply_markup,
             protect_content=True
         )
         logger.info(f"Sent lecture group link to user {user_id} for /{command}")
     except Exception as e:
         logger.error(f"Lecture command handler error: {e}")
+        try:
+            await loading_msg.edit_text("❌ Error loading group information. Please try again.")
+        except:
+            pass
 
 @restricted
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -542,9 +624,18 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Unauthorized stats access attempt by {user_id}")
             return
         
-        # Calculate ping
+        # Show loading animation
+        loading_msg = await show_loading_animation(update, context, "stats")
+        
+        # Calculate ping with animation
         start_time = time.time()
-        test_message = await update.message.reply_text("🏓 Pinging...")
+        
+        # Animate ping calculation
+        ping_stages = ["📡 Connecting...", "🔄 Measuring response...", "⚡ Calculating ping..."]
+        for stage in ping_stages:
+            await loading_msg.edit_text(f"📊 Gathering statistics...\n{stage}")
+            await asyncio.sleep(0.3)
+        
         ping_time = (time.time() - start_time) * 1000  # in milliseconds
         
         # Get user count
@@ -587,11 +678,15 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🍃 MongoDB: {mongo_version}"
         )
         
-        await test_message.edit_text(stats_message)
+        await loading_msg.edit_text(stats_message)
         logger.info(f"Admin stats request: {user_count} users, {command_count} commands")
         
     except Exception as e:
         logger.error(f"Stats command error: {e}")
+        try:
+            await loading_msg.edit_text("❌ Error gathering statistics. Please try again.")
+        except:
+            pass
 
 async def run_broadcast(update, context, replied_message, is_forward=False):
     global broadcast_active, broadcast_cancelled
@@ -622,12 +717,16 @@ async def run_broadcast(update, context, replied_message, is_forward=False):
                 logger.error(f"Failed to send to user {user_id}: {e}")
                 return False
         
-        for user in users_collection.find():
+        # Progress animation symbols
+        progress_symbols = ["▰", "▱"]
+        progress_emojis = ["🔄", "⚡", "📤", "✨"]
+        
+        for index, user in enumerate(users_collection.find()):
             # Check if broadcast was cancelled
             if broadcast_cancelled:
                 await progress_msg.edit_text(
                     f"❌ {'Forward' if is_forward else 'Broadcast'} cancelled!\n"
-                    f"📢 Sent to: {success_count + failed_count} users\n"
+                    f"📊 Progress: {success_count + failed_count}/{total_users} users\n"
                     f"✅ Success: {success_count}\n"
                     f"❌ Failed: {failed_count}"
                 )
@@ -636,6 +735,11 @@ async def run_broadcast(update, context, replied_message, is_forward=False):
                 return
             
             try:
+                # Update progress with animation
+                progress_percent = (index + 1) / total_users * 100
+                progress_bar = "▰" * int(progress_percent / 10) + "▱" * (10 - int(progress_percent / 10))
+                current_emoji = progress_emojis[index % len(progress_emojis)]
+                
                 if is_forward:
                     # Forward the message
                     await context.bot.forward_message(
@@ -728,10 +832,12 @@ async def run_broadcast(update, context, replied_message, is_forward=False):
                     else:
                         failed_count += 1
                 
-                # Update progress every 10 sends
-                if (success_count + failed_count) % 10 == 0:
+                # Update progress every 5 sends or when percentage changes significantly
+                if (index + 1) % 5 == 0 or index == total_users - 1:
                     await progress_msg.edit_text(
-                        f"📢 {'Forwarding' if is_forward else 'Broadcasting'} to {total_users} users...\n"
+                        f"{current_emoji} {'Forwarding' if is_forward else 'Broadcasting'}...\n"
+                        f"{progress_bar} {progress_percent:.1f}%\n"
+                        f"📊 Progress: {index + 1}/{total_users} users\n"
                         f"✅ Success: {success_count}\n"
                         f"❌ Failed: {failed_count}\n\n"
                         f"⏸️ Use /cancel to stop the {'forward' if is_forward else 'broadcast'}"
@@ -746,9 +852,10 @@ async def run_broadcast(update, context, replied_message, is_forward=False):
         
         await progress_msg.edit_text(
             f"🎉 {'Forward' if is_forward else 'Broadcast'} completed!\n"
-            f"📢 Sent to: {total_users} users\n"
+            f"📊 Total users: {total_users}\n"
             f"✅ Success: {success_count}\n"
-            f"❌ Failed: {failed_count}"
+            f"❌ Failed: {failed_count}\n"
+            f"📈 Success rate: {(success_count/total_users*100):.1f}%"
         )
         logger.info(f"{'Forward' if is_forward else 'Broadcast'} completed. Success: {success_count}, Failed: {failed_count}")
         
@@ -788,6 +895,9 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
+        # Show loading animation
+        loading_msg = await show_loading_animation(update, context, "broadcast")
+        
         if not replied_message:
             # Create a message from text arguments
             message_text = ' '.join(context.args)
@@ -798,12 +908,17 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'message_id': update.message.message_id
             })()
         
+        await loading_msg.delete()
+        
         # Run broadcast in background task
         broadcast_task = asyncio.create_task(run_broadcast(update, context, replied_message, is_forward=False))
         
     except Exception as e:
         logger.error(f"Broadcast command error: {e}")
-        await update.message.reply_text("⚠️ An error occurred while starting broadcast.")
+        try:
+            await loading_msg.edit_text("❌ Error starting broadcast. Please try again.")
+        except:
+            await update.message.reply_text("❌ Error starting broadcast. Please try again.")
 
 # New command to forward messages to all users
 @restricted
@@ -834,12 +949,19 @@ async def fcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
+        # Show loading animation
+        loading_msg = await show_loading_animation(update, context, "broadcast")
+        await loading_msg.delete()
+        
         # Run forward in background task
         broadcast_task = asyncio.create_task(run_broadcast(update, context, replied_message, is_forward=True))
         
     except Exception as e:
         logger.error(f"Fcast command error: {e}")
-        await update.message.reply_text("⚠️ An error occurred while starting forward.")
+        try:
+            await loading_msg.edit_text("❌ Error starting forward. Please try again.")
+        except:
+            await update.message.reply_text("❌ Error starting forward. Please try again.")
 
 # Command to cancel ongoing broadcast
 @restricted
@@ -859,6 +981,9 @@ async def cancel_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ No active broadcast to cancel!")
             return
         
+        # Show cancelling animation
+        cancel_msg = await update.message.reply_text("🛑 Cancelling broadcast...")
+        
         # Set cancellation flag
         broadcast_cancelled = True
         
@@ -869,7 +994,7 @@ async def cancel_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except asyncio.TimeoutError:
                 logger.warning("Broadcast task didn't cancel gracefully")
         
-        await update.message.reply_text("⏹️ Broadcast cancelled successfully.")
+        await cancel_msg.edit_text("⏹️ Broadcast cancelled successfully. ✅")
         logger.info(f"Broadcast cancelled by {user_id}")
         
     except Exception as e:
@@ -882,10 +1007,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         is_admin = await is_owner(user_id)
         
+        # Show quick loading
+        loading_msg = await update.message.reply_text("🔍 Loading help...")
+        await asyncio.sleep(0.3)
+        
         commands = [
-            "/start - Begin using the bot",
-            "/lecture - Show all lecture groups",
-            "/help - Show this help message"
+            "💫 Available Commands:",
+            "",
+            "🚀 /start - Begin using the bot",
+            "📚 /lecture - Show all lecture groups", 
+            "❓ /help - Show this help message"
         ]
         
         # Create inline button for tutorial video
@@ -897,9 +1028,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if is_admin:
             admin_commands = [
-                "\n\n👑 Admin Commands:",
+                "",
+                "👑 Admin Commands:",
                 "/addlecture <name> <link> <description> - Add new lecture group",
-                "/removelecture <name> - Remove a lecture group",
+                "/removelecture <name> - Remove a lecture group", 
                 "/stats - View bot statistics",
                 "/broadcast <message> - Send message to all users (or reply to a message)",
                 "/fcast - Forward a message to all users (reply to a message)",
@@ -907,9 +1039,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             commands.extend(admin_commands)
         
-        help_message = "\n".join(commands) + "\n\nNeed help using the bot? Watch our tutorial video!"
+        help_message = "\n".join(commands) + "\n\n💡 Need help using the bot? Watch our tutorial video!"
         
-        await update.message.reply_text(
+        await loading_msg.edit_text(
             help_message,
             reply_markup=reply_markup,
             protect_content=True
@@ -917,6 +1049,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Help command sent to {update.effective_user.id}")
     except Exception as e:
         logger.error(f"Help command error: {e}")
+        try:
+            await loading_msg.edit_text("❌ Error loading help. Please try again.")
+        except:
+            pass
 
 # Handler to ignore commands in groups
 async def ignore_group_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
