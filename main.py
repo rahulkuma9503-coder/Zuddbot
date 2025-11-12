@@ -119,7 +119,7 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE, cha
                 status = member.status
                 logger.info(f"Membership check for user {user_id} in {chat_id}: {status} (attempt {attempt+1})")
                 
-                # Check all possible member statuses :cite[4]:cite[9]
+                # Check all possible member statuses
                 return status in ['member', 'administrator', 'creator', 'restricted']
             except Exception as e:
                 logger.warning(f"Standard membership check failed for {chat_id}: {e}")
@@ -168,7 +168,7 @@ async def check_all_memberships(user_id: int, context: ContextTypes.DEFAULT_TYPE
     
     return all(results)
 
-# Add restricted decorator to limit bot access :cite[1]:cite[7]
+# Add restricted decorator to limit bot access
 def restricted(func):
     from functools import wraps
     
@@ -371,7 +371,7 @@ async def check_membership_callback(update: Update, context: ContextTypes.DEFAUL
         await query.edit_message_text("⚠️ Error verifying membership. Please try again.")
 
 # Unified lecture command to list all custom commands with descriptions
-@restricted  # Add restricted decorator :cite[1]:cite[7]
+@restricted
 async def lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
@@ -404,7 +404,7 @@ async def lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Lecture command error: {e}")
 
 # Admin command to add new lecture group command with description
-@restricted  # Add restricted decorator :cite[1]:cite[7]
+@restricted
 async def add_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
@@ -461,7 +461,7 @@ async def add_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Failed to add lecture command. Please try again.")
 
 # Admin command to remove lecture command
-@restricted  # Add restricted decorator :cite[1]:cite[7]
+@restricted
 async def remove_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
@@ -497,7 +497,7 @@ async def remove_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Failed to remove lecture command. Please try again.")
 
 # Handler for custom lecture commands - UPDATED WITH TUTORIAL VIDEO
-@restricted  # Add restricted decorator :cite[1]:cite[7]
+@restricted
 async def lecture_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
@@ -531,7 +531,7 @@ async def lecture_command_handler(update: Update, context: ContextTypes.DEFAULT_
     except Exception as e:
         logger.error(f"Lecture command handler error: {e}")
 
-@restricted  # Add restricted decorator :cite[1]:cite[7]
+@restricted
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
@@ -760,7 +760,7 @@ async def run_broadcast(update, context, replied_message, is_forward=False):
         broadcast_active = False
         broadcast_cancelled = False
 
-@restricted  # Add restricted decorator :cite[1]:cite[7]
+@restricted
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global broadcast_task
     
@@ -806,7 +806,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ An error occurred while starting broadcast.")
 
 # New command to forward messages to all users
-@restricted  # Add restricted decorator :cite[1]:cite[7]
+@restricted
 async def fcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global broadcast_task
     
@@ -842,7 +842,7 @@ async def fcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ An error occurred while starting forward.")
 
 # Command to cancel ongoing broadcast
-@restricted  # Add restricted decorator :cite[1]:cite[7]
+@restricted
 async def cancel_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global broadcast_active, broadcast_cancelled, broadcast_task
     
@@ -876,7 +876,7 @@ async def cancel_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Cancel command error: {e}")
         await update.message.reply_text("⚠️ An error occurred while trying to cancel.")
 
-@restricted  # Add restricted decorator :cite[1]:cite[7]
+@restricted
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
@@ -918,6 +918,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Help command error: {e}")
 
+# Handler to ignore commands in groups
+async def ignore_group_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ignore all commands in groups and supergroups"""
+    # Simply return without doing anything
+    return
+
 def main():
     try:
         # Start Flask health check in a separate thread
@@ -943,22 +949,28 @@ def main():
         logger.info("Starting bot application...")
         application = ApplicationBuilder().token(TOKEN).build()
         
-        # Add handlers
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("lecture", lecture))
-        application.add_handler(CommandHandler("addlecture", add_lecture))
-        application.add_handler(CommandHandler("removelecture", remove_lecture))
-        application.add_handler(CommandHandler("stats", stats))
-        application.add_handler(CommandHandler("broadcast", broadcast))
-        application.add_handler(CommandHandler("fcast", fcast))
-        application.add_handler(CommandHandler("cancel", cancel_broadcast))
-        application.add_handler(CommandHandler("help", help_command))
+        # Add handlers with private chat filter - bot will only respond in private chats
+        application.add_handler(CommandHandler("start", start, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("lecture", lecture, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("addlecture", add_lecture, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("removelecture", remove_lecture, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("stats", stats, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("broadcast", broadcast, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("fcast", fcast, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("cancel", cancel_broadcast, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("help", help_command, filters.ChatType.PRIVATE))
         application.add_handler(CallbackQueryHandler(check_membership_callback))
         
-        # Add handler for custom lecture commands
-        application.add_handler(MessageHandler(filters.COMMAND, lecture_command_handler))
+        # Add handler for custom lecture commands with private chat filter
+        application.add_handler(MessageHandler(filters.COMMAND & filters.ChatType.PRIVATE, lecture_command_handler))
         
-        logger.info("Bot is now polling...")
+        # Add handler to silently ignore all commands in groups and supergroups
+        application.add_handler(MessageHandler(
+            filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), 
+            ignore_group_commands
+        ))
+        
+        logger.info("Bot is now polling... (Will only respond in private chats)")
         application.run_polling()
     except Exception as e:
         logger.critical(f"Fatal error in main: {e}")
